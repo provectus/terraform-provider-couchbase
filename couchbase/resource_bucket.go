@@ -1,13 +1,28 @@
 package couchbase
 
 import (
+	"bytes"
+	"errors"
+	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"gopkg.in/couchbase/gocb.v1"
+	"gopkg.in/couchbase/gocbcore.v7"
+	"io/ioutil"
+	"log"
+	"math/rand"
+	"net/http"
+	"net/url"
+	"time"
 )
 
 const (
-	nameProperty     = "name"
-	passwordProperty = "password"
+	nameProperty          = "name"
+	passwordProperty      = "password"
+	flushEnabledProperty  = "flush_enabled"
+	indexReplicasProperty = "index_replicas"
+	quotaProperty         = "quota"
+	replicasProperty      = "replicas"
+	typeProperty          = "type"
 )
 
 func resourceBucket() *schema.Resource {
@@ -22,108 +37,232 @@ func resourceBucket() *schema.Resource {
 				Required: true,
 				ForceNew: true,
 			},
-
 			passwordProperty: {
 				Type:     schema.TypeString,
 				Optional: true,
 				Default:  "",
 			},
+			flushEnabledProperty: {
+				Type:     schema.TypeBool,
+				Optional: true,
+				Default:  false,
+			},
+			indexReplicasProperty: {
+				Type:     schema.TypeBool,
+				Optional: true,
+			},
+			quotaProperty: {
+				Type:     schema.TypeInt,
+				Optional: true,
+				Default:  0,
+			},
+			replicasProperty: {
+				Type:     schema.TypeInt,
+				Optional: true,
+			},
+			typeProperty: {
+				Type:         schema.TypeInt,
+				Optional:     true,
+				Default:      0,
+				ValidateFunc: validateType,
+			},
 		},
 	}
 }
 
-func CreateBucket(data *schema.ResourceData, meta interface{}) error {
-	manager, err := getManager(meta.(*Config))
+func CreateBucket(data *schema.ResourceData, meta interface{}) (err error) {
+	_, manager, err := connect(meta.(*Config))
 	if err != nil {
 		return err
 	}
 
-	bucketSettings := gocb.BucketSettings{
-		FlushEnabled:  true,
-		IndexReplicas: true,
-		Name:          data.Get(nameProperty).(string),
-		Password:      data.Get(passwordProperty).(string),
-		Quota:         120,
-		Replicas:      1,
-		Type:          gocb.Couchbase,
+	settings := fetchSettings(data)
+	if err = manager.InsertBucket(&settings); err != nil {
+		return
 	}
 
-	err = manager.InsertBucket(&bucketSettings)
-	if err != nil {
-		return err
-	}
+	log.Printf("[INFO] A bucket with the name %q was created", settings.Name)
 
-	data.SetId(data.Get(nameProperty).(string))
+	data.SetId(settings.Name)
 
-	return nil
+	return ReadBucket(data, meta)
 }
 
-func ReadBucket(data *schema.ResourceData, meta interface{}) error {
-	cluster, err := gocb.Connect(meta.(*Config).Url)
+func ReadBucket(data *schema.ResourceData, meta interface{}) (err error) {
+	cluster, _, err := connect(meta.(*Config))
 	if err != nil {
-		return err
+		return
 	}
 
-	_ = cluster.Authenticate(gocb.PasswordAuthenticator{
-		Username: meta.(*Config).Username,
-		Password: meta.(*Config).Password,
-	})
+	time.Sleep(5 * time.Second)
 
-	bucket, err := cluster.OpenBucket(data.Get(nameProperty).(string), data.Get(passwordProperty).(string))
+	bucket, err := cluster.OpenBucket(data.Id(), data.Get(passwordProperty).(string))
 	if err != nil {
-		return err
+		log.Printf("[ERROR] Can not read a bucket %q: %s", data.Id(), err)
+		return
 	}
 
 	if bucket == nil {
+		log.Printf("[WARN] Can not find a bucket %q", data.Id())
 		data.SetId("")
 	}
 
-	return nil
+	return
 }
 
-func UpdateBucket(data *schema.ResourceData, meta interface{}) error {
-	manager, err := getManager(meta.(*Config))
-	if err != nil {
-		return err
+func UpdateBucket(data *schema.ResourceData, meta interface{}) (err error) {
+	bucketSettings := fetchSettings(data)
+
+	if err = updateBucket(&bucketSettings, meta.(*Config)); err != nil {
+		return
 	}
 
-	bucketSettings := gocb.BucketSettings{
-		FlushEnabled:  true,
-		IndexReplicas: true,
-		Name:          data.Get(nameProperty).(string),
-		Password:      data.Get(passwordProperty).(string),
-		Quota:         120,
-		Replicas:      1,
-		Type:          gocb.Couchbase,
-	}
+	log.Printf("[INFO] A bucket with the name %q was updated", data.Id())
 
-	err = manager.UpdateBucket(&bucketSettings)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return ReadBucket(data, meta)
 }
 
-func DeleteBucket(data *schema.ResourceData, meta interface{}) error {
-	manager, err := getManager(meta.(*Config))
+func DeleteBucket(data *schema.ResourceData, meta interface{}) (err error) {
+	_, manager, err := connect(meta.(*Config))
 	if err != nil {
-		return err
+		return
 	}
 
 	err = manager.RemoveBucket(data.Get(nameProperty).(string))
 	if err == nil {
+		log.Printf("[INFO] A bucket with the name %q was removed", data.Get(nameProperty).(string))
 		data.SetId("")
 	}
 
-	return err
+	return
 }
 
-func getManager(config *Config) (*gocb.ClusterManager, error) {
-	cluster, err := gocb.Connect(config.Url)
+func connect(config *Config) (cluster *gocb.Cluster, manager *gocb.ClusterManager, err error) {
+	if cluster, err = gocb.Connect(config.Url); err != nil {
+		return
+	}
+
+	if err = cluster.Authenticate(gocb.PasswordAuthenticator{
+		Username: config.Username,
+		Password: config.Password,
+	}); err != nil {
+		return
+	}
+	manager = cluster.Manager(config.Username, config.Password)
+
+	return
+}
+
+func fetchSettings(data *schema.ResourceData) gocb.BucketSettings {
+	return gocb.BucketSettings{
+		Name:          data.Get(nameProperty).(string),
+		Type:          gocb.BucketType(data.Get(typeProperty).(int)),
+		Quota:         data.Get(quotaProperty).(int),
+		Replicas:      data.Get(replicasProperty).(int),
+		FlushEnabled:  data.Get(flushEnabledProperty).(bool),
+		IndexReplicas: data.Get(indexReplicasProperty).(bool),
+	}
+}
+
+func validateType(val interface{}, key string) (warns []string, errs []error) {
+	value := val.(int)
+	switch value {
+	case 0, 1, 2:
+		break
+	default:
+		errs = append(errs, fmt.Errorf("%q contains an invalid value: %v. Valid values are: "+
+			"0 (Couchbase), 1 (Memcached), 2 (Ephemeral)", key, value))
+	}
+
+	return
+}
+
+func updateBucket(settings *gocb.BucketSettings, config *Config) (err error) {
+	agentConfig := gocbcore.AgentConfig{
+		UserString:           "gocb/" + gocb.Version(),
+		ConnectTimeout:       60000 * time.Millisecond,
+		ServerConnectTimeout: 7000 * time.Millisecond,
+		NmvRetryDelay:        100 * time.Millisecond,
+		UseKvErrorMaps:       true,
+		UseDurations:         true,
+		NoRootTraceSpans:     true,
+		UseCompression:       true,
+		UseZombieLogger:      true,
+	}
+
+	if err = agentConfig.FromConnStr(config.Url); err != nil {
+		return
+	}
+
+	httpCli := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: agentConfig.TlsConfig,
+		},
+	}
+
+	resp, err := updateRequest(httpCli, &agentConfig, config, settings)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode != 200 {
+		data, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return err
+		}
+		if err = resp.Body.Close(); err != nil {
+			log.Printf("[ERROR] Failed to close socket (%s)", err)
+		}
+
+		return errors.New(string(data))
+	}
+
+	return nil
+}
+
+func getData(settings *gocb.BucketSettings) []byte {
+	posts := url.Values{}
+
+	switch settings.Type {
+	case gocb.Couchbase:
+		posts.Add("bucketType", "couchbase")
+	case gocb.Memcached:
+		posts.Add("bucketType", "memcached")
+	case gocb.Ephemeral:
+		posts.Add("bucketType", "ephemeral")
+	}
+
+	if settings.FlushEnabled {
+		posts.Add("flushEnabled", "1")
+	} else {
+		posts.Add("flushEnabled", "0")
+	}
+
+	posts.Add("replicaNumber", fmt.Sprintf("%d", settings.Replicas))
+	posts.Add("authType", "sasl")
+	posts.Add("saslPassword", settings.Password)
+	posts.Add("ramQuotaMB", fmt.Sprintf("%d", settings.Quota))
+
+	return []byte(posts.Encode())
+}
+
+func updateRequest(httpCli *http.Client, agentConfig *gocbcore.AgentConfig, config *Config, settings *gocb.BucketSettings) (*http.Response, error) {
+	var hosts []string
+	for _, host := range agentConfig.HttpAddrs {
+		if agentConfig.TlsConfig != nil {
+			hosts = append(hosts, "https://"+host)
+		} else {
+			hosts = append(hosts, "http://"+host)
+		}
+	}
+
+	reqUri := fmt.Sprintf("%s/pools/default/buckets/%s", hosts[rand.Intn(len(hosts))], settings.Name)
+	req, err := http.NewRequest("POST", reqUri, bytes.NewReader(getData(settings)))
 	if err != nil {
 		return nil, err
 	}
+	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth(config.Username, config.Password)
 
-	return cluster.Manager(config.Username, config.Password), nil
+	return httpCli.Do(req)
 }

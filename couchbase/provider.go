@@ -4,18 +4,34 @@ import (
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/terraform"
+	"gopkg.in/couchbase/gocb.v1"
+	"gopkg.in/couchbase/gocbcore.v7"
+	"net/http"
+	"strconv"
+	"time"
+)
+
+const (
+	providerUrl                 = "url"
+	providerName                = "username"
+	providerPassword            = "password"
+	providerBucketCreationDelay = "bucket_creation_delay"
 )
 
 type Config struct {
-	Url      string
-	Username string
-	Password string
+	Url                 string
+	Username            string
+	Password            string
+	BucketCreationDelay int
+	AgentConfig         gocbcore.AgentConfig
+	HttpClient          http.Client
+	Hosts               []string
 }
 
 func Provider() terraform.ResourceProvider {
 	return &schema.Provider{
 		Schema: map[string]*schema.Schema{
-			"url": {
+			providerUrl: {
 				Type:        schema.TypeString,
 				Required:    true,
 				DefaultFunc: schema.EnvDefaultFunc("COUCHBASE_URL", nil),
@@ -26,18 +42,26 @@ func Provider() terraform.ResourceProvider {
 					}
 					return
 				},
+				Description: "The URL (connection string) of Couchbase server",
 			},
-
-			"username": {
+			providerName: {
 				Type:        schema.TypeString,
 				Required:    true,
 				DefaultFunc: schema.EnvDefaultFunc("COUCHBASE_USERNAME", nil),
+				Description: "A Couchbase user's name",
 			},
 
-			"password": {
+			providerPassword: {
 				Type:        schema.TypeString,
 				Optional:    true,
 				DefaultFunc: schema.EnvDefaultFunc("COUCHBASE_PASSWORD", nil),
+				Description: "A Couchbase user's password",
+			},
+			providerBucketCreationDelay: {
+				Type:        schema.TypeString,
+				Optional:    true,
+				DefaultFunc: schema.EnvDefaultFunc("COUCHBASE_PASSWORD", nil),
+				Description: "A delay (in seconds) until the bucket is created on a cluster",
 			},
 		},
 		ResourcesMap: map[string]*schema.Resource{
@@ -48,9 +72,51 @@ func Provider() terraform.ResourceProvider {
 }
 
 func providerConfigure(d *schema.ResourceData) (interface{}, error) {
+	agentConfig := gocbcore.AgentConfig{
+		UserString:           "gocb/" + gocb.Version(),
+		ConnectTimeout:       60000 * time.Millisecond,
+		ServerConnectTimeout: 7000 * time.Millisecond,
+		NmvRetryDelay:        100 * time.Millisecond,
+		UseKvErrorMaps:       true,
+		UseDurations:         true,
+		NoRootTraceSpans:     true,
+		UseCompression:       true,
+		UseZombieLogger:      true,
+	}
+
+	if err := agentConfig.FromConnStr(d.Get(providerUrl).(string)); err != nil {
+		return nil, err
+	}
+
+	httpClient := http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: agentConfig.TlsConfig,
+		},
+	}
+
+	delay, err := strconv.Atoi(d.Get(providerBucketCreationDelay).(string))
+	if err != nil {
+		return nil, err
+	}
+
 	return &Config{
-		Url:      d.Get("url").(string),
-		Username: d.Get("username").(string),
-		Password: d.Get("password").(string),
+		Url:                 d.Get(providerUrl).(string),
+		Username:            d.Get(providerName).(string),
+		Password:            d.Get(providerPassword).(string),
+		BucketCreationDelay: delay,
+		AgentConfig:         agentConfig,
+		HttpClient:          httpClient,
+		Hosts:               getHosts(&agentConfig),
 	}, nil
+}
+
+func getHosts(agentConfig *gocbcore.AgentConfig) (hosts []string) {
+	for _, host := range agentConfig.HttpAddrs {
+		if agentConfig.TlsConfig != nil {
+			hosts = append(hosts, "https://"+host)
+		} else {
+			hosts = append(hosts, "http://"+host)
+		}
+	}
+	return
 }

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"gopkg.in/couchbase/gocb.v1"
-	"gopkg.in/couchbase/gocbcore.v7"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -54,7 +53,7 @@ func resourceBucket() *schema.Resource {
 			quotaProperty: {
 				Type:     schema.TypeInt,
 				Optional: true,
-				Default:  0,
+				Default:  100,
 			},
 			replicasProperty: {
 				Type:     schema.TypeInt,
@@ -85,16 +84,23 @@ func CreateBucket(data *schema.ResourceData, meta interface{}) (err error) {
 
 	data.SetId(settings.Name)
 
-	return ReadBucket(data, meta)
+	return ReadBucketDelayed(data, meta, true)
 }
 
 func ReadBucket(data *schema.ResourceData, meta interface{}) (err error) {
+	return ReadBucketDelayed(data, meta, false)
+}
+
+func ReadBucketDelayed(data *schema.ResourceData, meta interface{}, delayed bool) (err error) {
+	log.Printf("[INFO] Reading bucket with the name %q...", data.Id())
 	cluster, _, err := connect(meta.(*Config))
 	if err != nil {
 		return
 	}
 
-	time.Sleep(5 * time.Second)
+	if delayed {
+		time.Sleep(time.Duration(meta.(*Config).BucketCreationDelay) * time.Second)
+	}
 
 	bucket, err := cluster.OpenBucket(data.Id(), data.Get(passwordProperty).(string))
 	if err != nil {
@@ -119,7 +125,7 @@ func UpdateBucket(data *schema.ResourceData, meta interface{}) (err error) {
 
 	log.Printf("[INFO] A bucket with the name %q was updated", data.Id())
 
-	return ReadBucket(data, meta)
+	return ReadBucketDelayed(data, meta, true)
 }
 
 func DeleteBucket(data *schema.ResourceData, meta interface{}) (err error) {
@@ -178,34 +184,13 @@ func validateType(val interface{}, key string) (warns []string, errs []error) {
 }
 
 func updateBucket(settings *gocb.BucketSettings, config *Config) (err error) {
-	agentConfig := gocbcore.AgentConfig{
-		UserString:           "gocb/" + gocb.Version(),
-		ConnectTimeout:       60000 * time.Millisecond,
-		ServerConnectTimeout: 7000 * time.Millisecond,
-		NmvRetryDelay:        100 * time.Millisecond,
-		UseKvErrorMaps:       true,
-		UseDurations:         true,
-		NoRootTraceSpans:     true,
-		UseCompression:       true,
-		UseZombieLogger:      true,
-	}
 
-	if err = agentConfig.FromConnStr(config.Url); err != nil {
-		return
-	}
-
-	httpCli := &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: agentConfig.TlsConfig,
-		},
-	}
-
-	resp, err := updateRequest(httpCli, &agentConfig, config, settings)
+	resp, err := updateRequest(config, settings)
 	if err != nil {
 		return err
 	}
 
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		data, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			return err
@@ -246,17 +231,8 @@ func getData(settings *gocb.BucketSettings) []byte {
 	return []byte(posts.Encode())
 }
 
-func updateRequest(httpCli *http.Client, agentConfig *gocbcore.AgentConfig, config *Config, settings *gocb.BucketSettings) (*http.Response, error) {
-	var hosts []string
-	for _, host := range agentConfig.HttpAddrs {
-		if agentConfig.TlsConfig != nil {
-			hosts = append(hosts, "https://"+host)
-		} else {
-			hosts = append(hosts, "http://"+host)
-		}
-	}
-
-	reqUri := fmt.Sprintf("%s/pools/default/buckets/%s", hosts[rand.Intn(len(hosts))], settings.Name)
+func updateRequest(config *Config, settings *gocb.BucketSettings) (*http.Response, error) {
+	reqUri := fmt.Sprintf("%s/pools/default/buckets/%s", config.Hosts[rand.Intn(len(config.Hosts))], settings.Name)
 	req, err := http.NewRequest("POST", reqUri, bytes.NewReader(getData(settings)))
 	if err != nil {
 		return nil, err
@@ -264,5 +240,5 @@ func updateRequest(httpCli *http.Client, agentConfig *gocbcore.AgentConfig, conf
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
 	req.SetBasicAuth(config.Username, config.Password)
 
-	return httpCli.Do(req)
+	return config.HttpClient.Do(req)
 }

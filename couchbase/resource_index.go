@@ -9,16 +9,17 @@ import (
 )
 
 const (
-	bucketNameProperty     = "bucketName"
-	bucketPasswordProperty = "bucketPassword"
-	indexNameProperty      = "indexName"
-	indexFieldsProperty    = "indexFields"
+	bucketNameProperty     = "bucket_name"
+	bucketPasswordProperty = "bucket_password"
+	indexNameProperty      = "index_name"
+	indexFieldsProperty    = "index_fields"
 )
 
 func resourceIndex() *schema.Resource {
 	return &schema.Resource{
 		Create: createIndex,
 		Read:   readIndex,
+		Update: updateIndex,
 		Delete: deleteIndex,
 		Schema: map[string]*schema.Schema{
 			bucketNameProperty: {
@@ -71,6 +72,10 @@ func readIndex(data *schema.ResourceData, meta interface{}) (err error) {
 		return
 	}
 	_, err = manager.GetIndexes()
+	return
+}
+
+func updateIndex(data *schema.ResourceData, meta interface{}) (err error) {
 	return
 }
 

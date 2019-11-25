@@ -10,6 +10,7 @@ import (
 )
 
 const (
+	readIndexDelay         = "3s"
 	bucketNameProperty     = "bucket_name"
 	bucketPasswordProperty = "bucket_password"
 	indexNameProperty      = "index_name"
@@ -52,19 +53,11 @@ func createIndex(data *schema.ResourceData, meta interface{}) (err error) {
 	if err != nil {
 		return
 	}
-	indexName := data.Get(indexNameProperty).(string)
-	indexFields := data.Get(indexFieldsProperty).(string)
-	if indexFields == "" {
-		err = manager.CreatePrimaryIndex(indexName, true, false)
-	} else {
-		err = manager.CreateIndex(indexName, strings.Split(indexFields, ","), true, false)
-	}
+	err = doCreateIndex(data, manager)
 	if err != nil {
 		return
 	}
-	log.Printf("[INFO] An index with the name %q was created", indexName)
-	data.SetId(indexName)
-	return doReadIndex(data, manager)
+	return doReadIndex(data, manager, readIndexDelay)
 }
 
 func readIndex(data *schema.ResourceData, meta interface{}) (err error) {
@@ -72,7 +65,7 @@ func readIndex(data *schema.ResourceData, meta interface{}) (err error) {
 	if err != nil {
 		return
 	}
-	doReadIndex(data, manager)
+	doReadIndex(data, manager, readIndexDelay)
 	return
 }
 
@@ -81,7 +74,15 @@ func updateIndex(data *schema.ResourceData, meta interface{}) (err error) {
 	if err != nil {
 		return
 	}
-	return doReadIndex(data, manager)
+	err = doDropIndex(data, manager)
+	if err != nil {
+		return
+	}
+	err = doCreateIndex(data, manager)
+	if err != nil {
+		return
+	}
+	return doReadIndex(data, manager, readIndexDelay)
 }
 
 func deleteIndex(data *schema.ResourceData, meta interface{}) (err error) {
@@ -89,13 +90,7 @@ func deleteIndex(data *schema.ResourceData, meta interface{}) (err error) {
 	if err != nil {
 		return
 	}
-	indexName := data.Get(indexNameProperty).(string)
-	err = manager.DropIndex(indexName, false)
-	if err == nil {
-		log.Printf("[INFO] An index with the name %q was removed", indexName)
-		data.SetId("")
-	}
-	return
+	return doDropIndex(data, manager)
 }
 
 func getBucketManager(data *schema.ResourceData, meta interface{}) (manager *gocb.BucketManager, err error) {
@@ -121,13 +116,38 @@ func getBucketManager(data *schema.ResourceData, meta interface{}) (manager *goc
 	return
 }
 
-func doReadIndex(data *schema.ResourceData, manager *gocb.BucketManager) (err error) {
-	d, _ := time.ParseDuration("3s")
+func doReadIndex(data *schema.ResourceData, manager *gocb.BucketManager, delay string) (err error) {
+	d, _ := time.ParseDuration(delay)
 	indexName := data.Get(indexNameProperty).(string)
 	err = manager.WatchIndexes([]string{indexName}, false, d)
 	if err != nil {
 		log.Printf("[WARN] Can not find index %q", indexName)
 		data.SetId("")
+	}
+	return
+}
+
+func doDropIndex(data *schema.ResourceData, manager *gocb.BucketManager) (err error) {
+	indexName := data.Get(indexNameProperty).(string)
+	err = manager.DropIndex(indexName, false)
+	if err == nil {
+		log.Printf("[INFO] An index with the name %q was removed", indexName)
+		data.SetId("")
+	}
+	return
+}
+
+func doCreateIndex(data *schema.ResourceData, manager *gocb.BucketManager) (err error) {
+	indexName := data.Get(indexNameProperty).(string)
+	indexFields := data.Get(indexFieldsProperty).(string)
+	if indexFields == "" {
+		err = manager.CreatePrimaryIndex(indexName, true, false)
+	} else {
+		err = manager.CreateIndex(indexName, strings.Split(indexFields, ","), true, false)
+	}
+	if err == nil {
+		log.Printf("[INFO] An index with the name %q was created", indexName)
+		data.SetId(indexName)
 	}
 	return
 }

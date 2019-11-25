@@ -74,7 +74,7 @@ func readIndex(data *schema.ResourceData, meta interface{}) (err error) {
 	}
 	d, _ := time.ParseDuration("3s")
 	indexName := data.Get(indexNameProperty).(string)
-	if manager.WatchIndexes([]string{indexName}, true, d) != nil {
+	if manager.WatchIndexes([]string{indexName}, false, d) != nil {
 		log.Printf("[WARN] Can not find an index %q", indexName)
 		data.SetId("")
 	}
@@ -91,11 +91,7 @@ func deleteIndex(data *schema.ResourceData, meta interface{}) (err error) {
 		return
 	}
 	indexName := data.Get(indexNameProperty).(string)
-	if data.Get(indexFieldsProperty).(string) == "PRIMARY" {
-		err = manager.DropPrimaryIndex(indexName, true)
-	} else {
-		err = manager.DropIndex(indexName, true)
-	}
+	err = manager.DropIndex(indexName, false)
 	if err == nil {
 		log.Printf("[INFO] An index with the name %q was removed", indexName)
 		data.SetId("")

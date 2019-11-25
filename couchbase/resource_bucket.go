@@ -4,14 +4,15 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
-	"gopkg.in/couchbase/gocb.v1"
 	"io/ioutil"
 	"log"
 	"math/rand"
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"gopkg.in/couchbase/gocb.v1"
 )
 
 const (
@@ -139,22 +140,6 @@ func DeleteBucket(data *schema.ResourceData, meta interface{}) (err error) {
 		log.Printf("[INFO] A bucket with the name %q was removed", data.Get(nameProperty).(string))
 		data.SetId("")
 	}
-
-	return
-}
-
-func connect(config *Config) (cluster *gocb.Cluster, manager *gocb.ClusterManager, err error) {
-	if cluster, err = gocb.Connect(config.Url); err != nil {
-		return
-	}
-
-	if err = cluster.Authenticate(gocb.PasswordAuthenticator{
-		Username: config.Username,
-		Password: config.Password,
-	}); err != nil {
-		return
-	}
-	manager = cluster.Manager(config.Username, config.Password)
 
 	return
 }

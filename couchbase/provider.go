@@ -2,13 +2,14 @@ package couchbase
 
 import (
 	"fmt"
+	"net/http"
+	"strconv"
+	"time"
+
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/terraform"
 	"gopkg.in/couchbase/gocb.v1"
 	"gopkg.in/couchbase/gocbcore.v7"
-	"net/http"
-	"strconv"
-	"time"
 )
 
 const (
@@ -66,6 +67,7 @@ func Provider() terraform.ResourceProvider {
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"couchbase_bucket": resourceBucket(),
+			"couchbase_index":  resourceIndex(),
 		},
 		ConfigureFunc: providerConfigure,
 	}

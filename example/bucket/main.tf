@@ -34,3 +34,9 @@ resource "couchbase_bucket" "bucket" {
   quota = 150
   type = 0
 }
+
+# Create a primary index
+resource "couchbase_index" "index" {
+  bucket_name = couchbase_bucket.bucket.name
+  index_name = "def_${couchbase_bucket.bucket.name}_primary"
+}

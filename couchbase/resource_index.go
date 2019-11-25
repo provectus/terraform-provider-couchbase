@@ -64,7 +64,7 @@ func createIndex(data *schema.ResourceData, meta interface{}) (err error) {
 	}
 	log.Printf("[INFO] An index with the name %q was created", indexName)
 	data.SetId(indexName)
-	return
+	return doReadIndex(data, manager)
 }
 
 func readIndex(data *schema.ResourceData, meta interface{}) (err error) {
@@ -72,17 +72,16 @@ func readIndex(data *schema.ResourceData, meta interface{}) (err error) {
 	if err != nil {
 		return
 	}
-	d, _ := time.ParseDuration("3s")
-	indexName := data.Get(indexNameProperty).(string)
-	if manager.WatchIndexes([]string{indexName}, false, d) != nil {
-		log.Printf("[WARN] Can not find an index %q", indexName)
-		data.SetId("")
-	}
+	doReadIndex(data, manager)
 	return
 }
 
 func updateIndex(data *schema.ResourceData, meta interface{}) (err error) {
-	return
+	manager, err := getBucketManager(data, meta)
+	if err != nil {
+		return
+	}
+	return doReadIndex(data, manager)
 }
 
 func deleteIndex(data *schema.ResourceData, meta interface{}) (err error) {
@@ -118,6 +117,17 @@ func getBucketManager(data *schema.ResourceData, meta interface{}) (manager *goc
 	manager = bucket.Manager(config.Username, config.Password)
 	if manager == nil {
 		log.Printf("[WARN] Can not get a manager for bucket %q", bucketName)
+	}
+	return
+}
+
+func doReadIndex(data *schema.ResourceData, manager *gocb.BucketManager) (err error) {
+	d, _ := time.ParseDuration("3s")
+	indexName := data.Get(indexNameProperty).(string)
+	err = manager.WatchIndexes([]string{indexName}, false, d)
+	if err != nil {
+		log.Printf("[WARN] Can not find index %q", indexName)
+		data.SetId("")
 	}
 	return
 }

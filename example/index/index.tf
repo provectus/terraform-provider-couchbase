@@ -27,8 +27,16 @@ provider "couchbase" {
   bucket_creation_delay = var.bucket_creation_delay
 }
 
+# Create a bucket
+resource "couchbase_bucket" "bucket" {
+  name = "test"
+  flush_enabled = false
+  quota = 150
+  type = 0
+}
+
 # Create a primary index
 resource "couchbase_index" "index" {
-  bucket_name = "test"
-  index_name = "def_test_primary"
+  bucket_name = couchbase_bucket.bucket.name
+  index_name = "def_${couchbase_bucket.bucket.name}_primary"
 }

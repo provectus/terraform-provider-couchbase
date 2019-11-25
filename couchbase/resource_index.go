@@ -3,6 +3,7 @@ package couchbase
 import (
 	"log"
 	"strings"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"gopkg.in/couchbase/gocb.v1"
@@ -71,7 +72,12 @@ func readIndex(data *schema.ResourceData, meta interface{}) (err error) {
 	if err != nil {
 		return
 	}
-	_, err = manager.GetIndexes()
+	d, _ := time.ParseDuration("3s")
+	indexName := data.Get(indexNameProperty).(string)
+	if manager.WatchIndexes([]string{indexName}, true, d) != nil {
+		log.Printf("[WARN] Can not find an index %q", indexName)
+		data.SetId("")
+	}
 	return
 }
 

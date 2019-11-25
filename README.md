@@ -18,3 +18,9 @@ This provider helps to execute CRUD operation over Couchbase buckets.
 - **quota** `integer` - a memory quota for the bucket in megabytes *(default - 100)*; 
 - **replicas** `integer` - replicas count for the bucket;
 - **type** `integer` - a bucket type *(Couchbase (0) - default, Memcached(1), Ephemeral(2))*
+
+### Index resource properties
+- **bucket_name** `string` - a bucket's name (REQUIRED);
+- **bucket_password** `string` - a bucket's password *(default - "")*;
+- **index_name** `string` - an index name (REQUIRED);
+- **index_fields** `string` - bucket's fields *(e.g. "field1, field2")* for index. Primary index will be created by default *(default - "")*;

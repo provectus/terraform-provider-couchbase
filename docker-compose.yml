@@ -6,3 +6,11 @@ services:
     ports:
       - 8091-8094:8091-8094
       - 11210-11211:11210-11211
+  build:
+    build: .
+    volumes:
+      - ~/.terraform.d/plugins/:/app/bin/
+    command:
+      - cp
+      - terraform-provider-couchbase
+      - /app/bin/

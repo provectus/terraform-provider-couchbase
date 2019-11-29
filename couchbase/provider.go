@@ -68,6 +68,7 @@ func Provider() terraform.ResourceProvider {
 		ResourcesMap: map[string]*schema.Resource{
 			"couchbase_bucket": resourceBucket(),
 			"couchbase_index":  resourceIndex(),
+			"couchbase_user":   resourceUser(),
 		},
 		ConfigureFunc: providerConfigure,
 	}

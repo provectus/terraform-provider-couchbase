@@ -40,3 +40,12 @@ resource "couchbase_index" "index" {
   bucket_name = couchbase_bucket.bucket.name
   index_name = "def_${couchbase_bucket.bucket.name}_primary"
 }
+
+# Create a user
+resource "couchbase_user" "user" {
+  user_name = "user_test1"
+  user_password = "password0"
+  user_roles ="data_reader:test, data_writer:test"
+
+  depends_on = [couchbase_bucket.bucket]
+}

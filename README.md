@@ -52,5 +52,5 @@ $ ls ~/.terraform.d/plugins/terraform-provider-couchbase
 | Property | Type | Description | Default |
 |----------|------------|----------------|-----------|
 | **user_name** | `string` | a user's name | |
-| **bucket_password** | `string` | a user's password | |
+| **user_password** | `string` | a user's password | |
 | **user_roles** | `string` | a user's permissions for bucket (e.g. *"data_reader:test, data_writer:test"*) | |

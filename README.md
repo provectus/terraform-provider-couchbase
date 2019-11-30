@@ -47,3 +47,10 @@ $ ls ~/.terraform.d/plugins/terraform-provider-couchbase
 | **bucket_password** | `string` | a bucket's password | `""` |
 | **index_name** | `string` | an index name | |
 | **index_fields** | `string` | bucket's fields for index (e.g. *"field1, field2"*). _Keep empty to create a primary index_| `""` |
+
+### User
+| Property | Type | Description | Default |
+|----------|------------|----------------|-----------|
+| **user_name** | `string` | a user's name | |
+| **bucket_password** | `string` | a user's password | |
+| **user_roles** | `string` | a user's permissions for bucket (e.g. *"data_reader:test, data_writer:test"*) | |

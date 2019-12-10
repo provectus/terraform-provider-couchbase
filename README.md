@@ -2,6 +2,7 @@
 This provider helps to manage the Couchbase resources. Currently supports the next resources:
 - [Bucket](#Bucket)
 - [Index](#Index)
+- [User](#User)
 
 ## Quick start
 Download a suitable binary from the release page and put it into your `~/.terraform.d/plugins/`. After that, you can configure this provider in your terraform code, for the example of the code please follow to `./example` folder.

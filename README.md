@@ -2,6 +2,7 @@
 This provider helps to manage the Couchbase resources. Currently supports the next resources:
 - [Bucket](#Bucket)
 - [Index](#Index)
+- [User](#User)
 
 ## Quick start
 Download a suitable binary from the release page and put it into your `~/.terraform.d/plugins/`. After that, you can configure this provider in your terraform code, for the example of the code please follow to `./example` folder.
@@ -47,3 +48,10 @@ $ ls ~/.terraform.d/plugins/terraform-provider-couchbase
 | **bucket_password** | `string` | a bucket's password | `""` |
 | **index_name** | `string` | an index name | |
 | **index_fields** | `string` | bucket's fields for index (e.g. *"field1, field2"*). _Keep empty to create a primary index_| `""` |
+
+### User
+| Property | Type | Description | Default |
+|----------|------------|----------------|-----------|
+| **user_name** | `string` | a user's name | |
+| **user_password** | `string` | a user's password | |
+| **user_roles** | `string` | a user's permissions for bucket (e.g. *"data_reader:test, data_writer:test"*) | |
